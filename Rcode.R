@@ -11,7 +11,7 @@ library(gt)
 library(GGally)
 
 #read data 
-data<- read.csv("dataset.csv")
+data<- read.csv("data_dissertation.csv")
 
 data %>% skim() %>% gt()
 glimpse(data)
@@ -295,6 +295,9 @@ for (i in seq_along(K_vals)) { #for each value of k
 
 best_k<- K_vals[which.max(cv_acc)]
 #we select K with the highest CV accuracy 
+
+saveRDS(list(K_vals = K_vals, cv_acc = cv_acc, best_k = best_k,
+             pred_knn = pred_knn, knn_acc = knn_acc), "knn_results.rds")
 
 # Plot CV accuracy
 plot(K_vals, cv_acc, type="b",
@@ -629,19 +632,25 @@ mean(predsvm == test_data_c$Employment_Status)
 
 set.seed(1)
 model_svm_guassian<- svm(Employment_Status ~. , data=train_data_c,  type="C-classification", kernel="radial",probability=TRUE, cost=1) 
-predsvm_guassian<- predict(model_svm_guassian, newdata = test_data_c, type = "class")
+predsvm_guassian<- predict(model_svm_guassian, newdata = test_data_c, type = "class", probability = TRUE)
 mean(predsvm_guassian == test_data_c$Employment_Status)  #better accuracy 
 
 set.seed(1)
 model_svm_poli2<- svm(Employment_Status ~. , data=train_data_c,  type="C-classification", kernel="polynomial", probability=TRUE, degree=2,  cost=1) 
-predsvm_poli2<- predict(model_svm_poli2, newdata = test_data_c, type = "class")
+predsvm_poli2<- predict(model_svm_poli2, newdata = test_data_c, type = "class", probability = TRUE)
 mean(predsvm_poli2 == test_data_c$Employment_Status)  
 
 set.seed(1)
 model_svm_poli3<- svm(Employment_Status ~. , data=train_data_c,  type="C-classification", kernel="polynomial", probability=TRUE, degree=3,  cost=1) 
-predsvm_poli3<- predict(model_svm_poli3, newdata = test_data_c, type = "class")
+predsvm_poli3<- predict(model_svm_poli3, newdata = test_data_c, type = "class", probability = TRUE)
 mean(predsvm_poli3 == test_data_c$Employment_Status)  
 
+saveRDS(list(
+  Model_svm = Model_svm, predsvm = predsvm,
+  model_svm_guassian = model_svm_guassian, predsvm_guassian = predsvm_guassian,
+  model_svm_poli2 = model_svm_poli2, predsvm_poli2 = predsvm_poli2,
+  model_svm_poli3 = model_svm_poli3, predsvm_poli3 = predsvm_poli3
+), "svm_models.rds")
 
 
 model_SVM_metric <- data.frame(
@@ -679,6 +688,26 @@ roc_curve_SVM<-roc.curve(scores.class0 = pred_test_probability_svm[test_data_c$E
                          curve = TRUE)
 plot(roc_curve_SVM)
 
+
+saveRDS(list(K_vals = K_vals, cv_acc = cv_acc, best_k = best_k,
+             pred_knn = pred_knn, knn_acc = knn_acc,
+             cm_knn = cm_knn, pr_curve_knn = pr_curve_knn, roc_curve_knn = roc_curve_knn),
+        "knn_results.rds")
+
+saveRDS(list(
+  Model_svm = Model_svm, predsvm = predsvm,
+  model_svm_guassian = model_svm_guassian, predsvm_guassian = predsvm_guassian,
+  model_svm_poli2 = model_svm_poli2, predsvm_poli2 = predsvm_poli2,
+  model_svm_poli3 = model_svm_poli3, predsvm_poli3 = predsvm_poli3,
+  cm_SVM = cm_SVM, pr_curve_SVM = pr_curve_SVM, roc_curve_SVM = roc_curve_SVM
+), "svm_models.rds")
+
+saveRDS(list(
+  tree = tree, tree_prune_1se = tree_prune_1se,
+  pred_1SE_tree = pred_1SE_tree, accuracy_1se = accuracy_1se,
+  confusionM_tree = confusionM_tree, cm_tree = cm_tree,
+  pr_curve_tree = pr_curve_tree, roc_curve_tree = roc_curve_tree
+), "tree_results.rds")
 ######################################################################
 
 
@@ -716,6 +745,10 @@ comparison_metrics <- data.frame(
                 "ROC_AUC")
 )
 
+comparison_metrics$Metric <- rownames(comparison_metrics)
+comparison_metrics <- comparison_metrics[, c("Metric", "KNN", "Tree.1SE_rule.", "SVM")]
+
+comparison_metrics %>% gt() %>% cols_align(align = "center", columns = everything())
 
 #best is the tree
 
@@ -749,7 +782,7 @@ in other words it is the proportion of unemployed predicted as employed.
 
 data_emp_logistic<- data_emp %>%
   mutate(Employment_binary= (ifelse(Employment_Status=="Employed",1,0) )) %>%
-  select(-Employment_Status)
+  select(- Employment_Status)
 
 set.seed(1)
 n<- nrow(data_emp_logistic)
@@ -764,7 +797,7 @@ set.seed(1)
 model_AIC<- stepAIC(full_model, direction = "both")
 summary(model_AIC)   #one time it is giving gender another time it is not
 model_no_gender <- update(model_AIC, . ~ . - Gender)
-anova(model_no_gender, model_AIC, test = "Chisq") #remove gender
+anova_AIC_gender<- anova(model_no_gender, model_AIC, test = "Chisq") #remove gender
 
 model_AIC_no_gender<- model_no_gender
 summary(model_AIC_no_gender)
@@ -779,7 +812,8 @@ predict_BIC_logistic<- ifelse(predict(model_BIC, newdata=test_data, type="respon
 
 mean(predict_BIC_logistic==test_data$Employment_binary) #same model as AIC, same accuracy 
 
-#same same for BIC AND AIC
+
+
 
 #BIC BETTER CAUSE WE DIDNT HAVE TO REMOVE GENDER, CONTINUE WITH BIC
 
@@ -900,7 +934,7 @@ model_no_gender <- glm(
 summary(model_no_gender)
 #H0: Gender is not significant
 #H1: Gender is significant, choose model_glm
-anova(model_no_gender, model_glm, test = "Chisq") #p value >0.05 then we don't reject H0, so remove Gender
+anova_nogender<- anova(model_no_gender, model_glm, test = "Chisq") #p value >0.05 then we don't reject H0, so remove Gender
 
 model_no_field <- glm(
   Employment_binary ~ . -Age - Gender - Visa_Type -Field_of_Study,
@@ -909,7 +943,7 @@ model_no_field <- glm(
 )
 #H0: field is not significant
 #H1: field is significant, 
-anova(model_no_field, model_no_gender, test = "Chisq") #remove field, p value>0.05
+anova_nofield<- anova(model_no_field, model_no_gender, test = "Chisq") #remove field, p value>0.05
 
 summary(model_no_field)
 
@@ -920,13 +954,15 @@ model_no_country <- glm(
 )
 #H0: country is not significant
 #H1: country is significant, 
-anova(model_no_country, model_no_field, test = "Chisq") #remove country, p value>0.05
+anova_nocountry<-anova(model_no_country, model_no_field, test = "Chisq") #remove country, p value>0.05
 
 summary(model_no_country)
 
 final_Lasso_model<- model_no_country
 summary(final_Lasso_model)
 
+
+#same same for BIC AND AIC
 ################################
 #######   INTERACTIONS   #######
 
@@ -945,7 +981,7 @@ interaction_model <- glm(
 
 summary(interaction_model)
 
-anova(final_Lasso_model, interaction_model, test = "Chisq") #simpler model, then more complicated model
+anova_interaction<- anova(final_Lasso_model, interaction_model, test = "Chisq") #simpler model, then more complicated model
 #This means the interaction model fits the training data significantly better than the simpler model.
 AIC(final_Lasso_model, interaction_model)
 
@@ -955,6 +991,21 @@ predict_interaction<- ifelse( predict(interaction_model, newdata = test_data, ty
 mean(predict_final==test_data$Employment_binary)  #same as the AIC after removing gender, same as BIC ONE
 mean(predict_interaction==test_data$Employment_binary)
 
+saveRDS(list(
+  full_model = full_model,
+  model_AIC = model_AIC, model_AIC_no_gender = model_AIC_no_gender,
+  anova_AIC_gender = anova_AIC_gender, predict_AIC_logistic = predict_AIC_logistic,
+  model_BIC = model_BIC, predict_BIC_logistic = predict_BIC_logistic,
+  model_glm=model_glm,
+  anova_nogender=anova_nogender,
+  model_no_field=model_no_field,
+  anova_nofield=anova_nofield,
+  model_no_country=model_no_country,
+  anova_nocountry=anova_nocountry,
+  final_Lasso_model=final_Lasso_model,
+  interaction_model=interaction_model,
+  anova_interaction=anova_interaction
+), "logistic_selection_results.rds")
 # the final selected model 
 
 exp(coef(interaction_model))
@@ -1052,7 +1103,7 @@ mse_BIC<- mean((test_data_s$Salary- predict_BIC)^2)
 
 
 
-  #try to see what is causing the cluster, 
+#try to see what is causing the cluster, 
 #calculate residuals to plot by ggplot, true and fitted values to find the residuals 
 
 salary_fitted<- train_data_s %>% 
@@ -1088,6 +1139,13 @@ plot(BIC_model, which = 2, main = "Before Log")
 plot(BIC_log_salary, which = 1, main = "After Log")
 plot(BIC_log_salary, which = 2, main = "After Log")
 
+saveRDS(list(
+  fullmodel = fullmodel,
+  BIC_model = BIC_model,
+  model_log_salary = model_log_salary,
+  BIC_log_salary = BIC_log_salary,
+  final_model_salary = final_model_salary
+), "salary_models.rds")
 ###################################################
 ############### Additive model
 library(mgcv)
@@ -1114,7 +1172,7 @@ salary_no_gender <-  gam(
 summary(salary_no_gender)
 #H0: Gender is not significant
 #H1: Gender is significant, choose model_glm
-anova(salary_no_gender, salary_add, test = "Chisq") #p value >0.05 then we don't reject H0, so remove Gender
+anova_gender<- anova(salary_no_gender, salary_add, test = "Chisq") #p value >0.05 then we don't reject H0, so remove Gender
 
 salary_no_visa <- gam(
   Salary ~ s(GPA) + s(Years_Since_Graduation) + s(Age) + Internship_Experience +
@@ -1125,7 +1183,7 @@ salary_no_visa <- gam(
 )
 #H0: Visa is not significant
 #H1: Visa is significant, 
-anova(salary_no_visa, salary_no_gender, test = "Chisq") #remove visa, p value>0.05
+anova_visa<- anova(salary_no_visa, salary_no_gender, test = "Chisq") #remove visa, p value>0.05
 
 summary(salary_no_visa)
 
@@ -1138,7 +1196,7 @@ salary_no_field <- gam(
 )
 #H0: field is not significant
 #H1: field is significant, 
-anova(salary_no_field, salary_no_visa, test = "Chisq") #remove field, p value>0.05
+anova_field<- anova(salary_no_field, salary_no_visa, test = "Chisq") #remove field, p value>0.05
 
 summary(salary_no_field)
 
@@ -1150,7 +1208,7 @@ salary_no_country <- gam(
 )
 #H0: country is not significant
 #H1: country is significant, 
-anova(salary_no_country, salary_no_field, test = "Chisq") #remove country, p value>0.05
+anova_country<- anova(salary_no_country, salary_no_field, test = "Chisq") #remove country, p value>0.05
 
 summary(salary_no_country)
 
@@ -1162,7 +1220,7 @@ salary_no_years_age <- gam(
 )
 #H0: country is not significant
 #H1: country is significant, 
-anova(salary_no_years_age, salary_no_country, test = "Chisq") #remove country, p value>0.05
+anova_years_age<- anova(salary_no_years_age, salary_no_country, test = "Chisq") #remove country, p value>0.05
 
 summary(salary_no_years_age)
 
@@ -1172,12 +1230,29 @@ final_GAM_salary<- gam(
   data=train_data_s,
   method="REML"
 )
+
 summary(final_GAM_salary)
+
 plot(final_GAM_salary)
 
+saveRDS(list(
+  salary_add = salary_add,
+  salary_no_gender = salary_no_gender,
+  salary_no_visa = salary_no_visa,
+  salary_no_field = salary_no_field,
+  salary_no_country = salary_no_country,
+  salary_no_years_age = salary_no_years_age,
+  final_GAM_salary = final_GAM_salary,
+  anova_gender = anova_gender,
+  anova_visa = anova_visa,
+  anova_field = anova_field,
+  anova_country = anova_country,
+  anova_years_age = anova_years_age
+), "GAM_salary_models.rds")
+
 GAM_interaction<- gam(Salary~ s(GPA)+ Internship_Experience + Education_Level+ University_Ranking+ Language_Proficiency+ GPA:Internship_Experience+
-                        Internship_Experience:University_Ranking + Education_Level:Language_Proficiency, data=train_data_s,
-                      method="REML")
+                                                   Internship_Experience:University_Ranking + Education_Level:Language_Proficiency, data=train_data_s,
+                                                 method="REML")
 
 #as K increases, the edf increase and the graph becomes more complex more wiggly, byut the shape of the curve doesnt change,s till decreasing 
 summary(GAM_interaction)
